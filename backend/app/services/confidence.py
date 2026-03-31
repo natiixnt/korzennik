@@ -2,6 +2,12 @@
 
 Computes a weighted score (0.0-1.0) across multiple factors to determine
 how likely a source record matches a known person.
+
+Features:
+- Polish name matching (gender variants, Latin church forms, phonetics)
+- Historical place name equivalences (Breslau=Wroclaw, Lemberg=Lwow)
+- Enhanced date parsing (approximate, ranges, Polish/Latin formats)
+- Record-type-aware scoring (birth record > census > grave)
 """
 
 from __future__ import annotations
@@ -9,8 +15,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from ..matching.date_parser import ParsedDate, parse_date, score_dates
 from ..matching.engine import match_given_names, match_surnames
-from ..matching.normalization import normalize_place
+from ..matching.places import places_match
 
 # Weights for each scoring factor (must sum to 1.0)
 WEIGHTS = {
@@ -23,16 +30,41 @@ WEIGHTS = {
     "source_reliability": 0.05,
 }
 
-# Source reliability scores
+# Base source reliability scores
 SOURCE_RELIABILITY = {
     "familysearch": 1.0,
     "geneteka": 0.9,
+    "metryki": 0.9,
+    "poznan_project": 0.9,
+    "jri_poland": 0.9,
     "szukajwarchiwach": 0.85,
     "ancestry": 0.85,
+    "yad_vashem": 0.85,
     "myheritage": 0.8,
     "findagrave": 0.8,
-    "billiongraves": 0.75,
     "ellisisland": 0.8,
+    "castle_garden": 0.8,
+    "wikitree": 0.8,
+    "geneanet": 0.75,
+    "billiongraves": 0.75,
+    "matricula": 0.85,
+}
+
+# Record type reliability multipliers
+# Applied on top of source reliability to reflect how authoritative
+# the specific record type is for the data it contains
+RECORD_TYPE_MULTIPLIER = {
+    "birth": 1.0,       # Birth certificate: authoritative for name, parents, birth date
+    "marriage": 0.95,    # Marriage record: names both sets of parents
+    "death": 0.90,       # Death record: authoritative for death info, less for birth
+    "baptism": 0.95,     # Church baptism: similar to birth record
+    "census": 0.75,      # Census: good for name/place, approximate dates
+    "grave": 0.70,       # Headstone: dates may be inaccurate
+    "immigration": 0.80, # Manifest: names often misspelled by clerks
+    "emigration": 0.80,
+    "military": 0.80,
+    "tree": 0.60,        # User-contributed tree: unverified
+    "index": 0.85,       # Index entry (like Geneteka): professionally indexed
 }
 
 
@@ -42,52 +74,14 @@ class PersonData:
     given_name: str | None = None
     surname: str | None = None
     birth_year: int | None = None
+    birth_date_text: str | None = None
     birth_place: str | None = None
     death_year: int | None = None
+    death_date_text: str | None = None
     death_place: str | None = None
     father_given_name: str | None = None
     mother_given_name: str | None = None
-
-
-def score_birth_year(year_a: int | None, year_b: int | None) -> float:
-    """Score birth year match with linear decay."""
-    if year_a is None or year_b is None:
-        return 0.5  # Unknown = neutral, not penalized
-    diff = abs(year_a - year_b)
-    if diff == 0:
-        return 1.0
-    if diff <= 2:
-        return 0.9  # Common off-by-one in records
-    if diff <= 5:
-        return 0.7
-    # Linear decay: 0.05 per year, floor at 0
-    return max(0.0, 1.0 - diff * 0.05)
-
-
-def score_place(place_a: str | None, place_b: str | None) -> float:
-    """Score place name match."""
-    if not place_a or not place_b:
-        return 0.5  # Unknown = neutral
-
-    norm_a = normalize_place(place_a)
-    norm_b = normalize_place(place_b)
-
-    if norm_a == norm_b:
-        return 1.0
-
-    # Check if one contains the other (e.g., "Warszawa" in "Warszawa, Mazowieckie")
-    if norm_a in norm_b or norm_b in norm_a:
-        return 0.85
-
-    # Check for shared tokens (e.g., same city but different formatting)
-    tokens_a = set(norm_a.split())
-    tokens_b = set(norm_b.split())
-    if tokens_a and tokens_b:
-        overlap = tokens_a & tokens_b
-        if overlap:
-            return 0.6 + 0.3 * (len(overlap) / max(len(tokens_a), len(tokens_b)))
-
-    return 0.0
+    record_type: str | None = None  # birth, death, marriage, census, grave, etc.
 
 
 def compute_confidence(
@@ -109,12 +103,14 @@ def compute_confidence(
     given_score = match_given_names(known.given_name or "", candidate.given_name or "")
     breakdown["given_name"] = round(given_score, 3)
 
-    # Birth year
-    year_score = score_birth_year(known.birth_year, candidate.birth_year)
+    # Birth year - use enhanced date parser
+    date_a = parse_date(known.birth_date_text) if known.birth_date_text else ParsedDate(year=known.birth_year)
+    date_b = parse_date(candidate.birth_date_text) if candidate.birth_date_text else ParsedDate(year=candidate.birth_year)
+    year_score = score_dates(date_a, date_b)
     breakdown["birth_year"] = round(year_score, 3)
 
-    # Birth place
-    place_score = score_place(known.birth_place, candidate.birth_place)
+    # Birth place - use historical place name matching
+    place_score = places_match(known.birth_place or "", candidate.birth_place or "")
     breakdown["birth_place"] = round(place_score, 3)
 
     # Father's given name
@@ -129,9 +125,14 @@ def compute_confidence(
     )
     breakdown["mother_name"] = round(mother_score, 3)
 
-    # Source reliability
-    reliability = SOURCE_RELIABILITY.get(source_name, 0.7)
-    breakdown["source_reliability"] = reliability
+    # Source reliability (base * record type multiplier)
+    base_reliability = SOURCE_RELIABILITY.get(source_name, 0.7)
+    record_multiplier = RECORD_TYPE_MULTIPLIER.get(
+        candidate.record_type or "", 0.85
+    )
+    reliability = base_reliability * record_multiplier
+    breakdown["source_reliability"] = round(reliability, 3)
+    breakdown["record_type"] = candidate.record_type or "unknown"
 
     # Weighted total
     total = (

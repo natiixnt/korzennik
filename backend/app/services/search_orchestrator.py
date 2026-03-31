@@ -21,18 +21,38 @@ from ..sources.szukaj import SzukajWArchiwachSource
 from ..sources.ellisisland import EllisIslandSource
 from ..sources.myheritage import MyHeritageSource
 from ..sources.ancestry import AncestrySource
+from ..sources.wikitree import WikiTreeSource
+from ..sources.poznan_project import PoznanProjectSource
+from ..sources.metryki import MetrykiSource
+from ..sources.jri_poland import JRIPolandSource
+from ..sources.geneanet import GeneanetSource
+from ..sources.yad_vashem import YadVashemSource
+from ..sources.castle_garden import CastleGardenSource
 from .confidence import PersonData, compute_confidence
 
 logger = logging.getLogger(__name__)
 
-# All available source instances
+# All available source instances (15 sources)
 SOURCES: dict[str, GenealogySource] = {
+    # API-based sources
     "familysearch": FamilySearchSource(),
+    "wikitree": WikiTreeSource(),
+    # Polish vital records
     "geneteka": GenetekaSource(),
+    "metryki": MetrykiSource(),
+    "poznan_project": PoznanProjectSource(),
+    "szukajwarchiwach": SzukajWArchiwachSource(),
+    # Jewish records
+    "jri_poland": JRIPolandSource(),
+    "yad_vashem": YadVashemSource(),
+    # Cemetery / grave records
     "findagrave": FindAGraveSource(),
     "billiongraves": BillionGravesSource(),
-    "szukajwarchiwach": SzukajWArchiwachSource(),
+    # Immigration records
     "ellisisland": EllisIslandSource(),
+    "castle_garden": CastleGardenSource(),
+    # Global family tree platforms
+    "geneanet": GeneanetSource(),
     "myheritage": MyHeritageSource(),
     "ancestry": AncestrySource(),
 }
@@ -54,8 +74,10 @@ def _person_to_data(person: Person) -> PersonData:
         given_name=primary_name.given_name if primary_name else None,
         surname=primary_name.surname if primary_name else None,
         birth_year=birth_event.date_year if birth_event else None,
+        birth_date_text=birth_event.date_text if birth_event else None,
         birth_place=birth_event.place_text if birth_event else None,
         death_year=death_event.date_year if death_event else None,
+        death_date_text=death_event.date_text if death_event else None,
         death_place=death_event.place_text if death_event else None,
     )
 
@@ -73,11 +95,14 @@ def _record_to_candidate(record: SourceRecord) -> PersonData:
         given_name=record.given_name,
         surname=record.surname,
         birth_year=record.birth_year,
+        birth_date_text=record.birth_date,
         birth_place=record.birth_place,
         death_year=record.death_year,
+        death_date_text=record.death_date,
         death_place=record.death_place,
         father_given_name=father_given,
         mother_given_name=mother_given,
+        record_type=record.event_type,
     )
 
 

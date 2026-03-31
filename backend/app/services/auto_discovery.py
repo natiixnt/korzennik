@@ -368,31 +368,43 @@ def _cross_validate_matches(
 
 
 def _matches_same_person(a: SourceMatch, b: SourceMatch) -> bool:
-    """Check if two matches likely describe the same person."""
+    """Check if two matches likely describe the same person.
+
+    Uses the Polish matching engine for name comparison (handles
+    Kowalski/Kowalska, Joannes/Jan, etc.) and historical place
+    name matching (Breslau/Wroclaw, etc.).
+    """
+    from ..matching.engine import match_given_names, match_surnames
+    from ..matching.places import places_match
+
     # Same source record = definitely same
     if a.source_record_id == b.source_record_id:
         return True
 
-    # Different sources - check name + dates
-    name_match = (
-        (a.given_name or "").lower() == (b.given_name or "").lower()
-        and (a.surname or "").lower() == (b.surname or "").lower()
-    )
-    if not name_match:
+    # Use the matching engine for name comparison
+    surname_score = match_surnames(a.surname or "", b.surname or "")
+    given_score = match_given_names(a.given_name or "", b.given_name or "")
+    name_score = (surname_score + given_score) / 2
+
+    if name_score < 0.5:
         return False
 
-    # Check if birth dates are close
+    # Names match well enough - check supporting evidence
+    # Birth dates close?
     year_a = _extract_year(a.birth_date)
     year_b = _extract_year(b.birth_date)
     if year_a and year_b and abs(year_a - year_b) <= 3:
         return True
 
-    # Same name + same birth place
+    # Birth places match (with historical equivalences)?
     if a.birth_place and b.birth_place:
-        place_a = (a.birth_place or "").lower()
-        place_b = (b.birth_place or "").lower()
-        if place_a and place_b and (place_a in place_b or place_b in place_a):
+        place_score = places_match(a.birth_place, b.birth_place)
+        if place_score >= 0.7:
             return True
+
+    # Strong name match alone (e.g., exact match) is enough
+    if name_score >= 0.85:
+        return True
 
     return False
 

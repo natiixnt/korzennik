@@ -228,6 +228,33 @@ def match_surname_score(name_a: str, name_b: str) -> float:
     return 0.0  # No rule-based match; caller should fall back to phonetic/fuzzy
 
 
+def infer_base_surname(married_surname: str) -> str | None:
+    """Infer the husband's/base surname from a Polish married feminine form.
+
+    E.g., "Nowakowa" -> "Nowak", "Kowalska" -> "Kowalski",
+    "Wisniewska" -> "Wisniewski", "Nowakawna" -> "Nowak".
+
+    Returns the base form or None if no marital suffix detected.
+    """
+    if not married_surname:
+        return None
+
+    base = normalize_name(married_surname)
+
+    # Strip marital suffixes (wife: -owa/-ina, daughter: -owna/-anka)
+    for suffix in ("owna", "anka", "owa", "ina"):
+        if base.endswith(suffix) and len(base) > len(suffix) + 2:
+            return base[:-len(suffix)]
+
+    # Strip adjective feminine endings -> masculine
+    for fem, masc in [("ska", "ski"), ("cka", "cki"), ("dzka", "dzki"),
+                      ("na", "ny"), ("wa", "wy")]:
+        if base.endswith(fem) and len(base) > len(fem) + 2:
+            return base[:-len(fem)] + masc
+
+    return None
+
+
 def match_given_name_score(name_a: str, name_b: str) -> float:
     """Score how well two given names match, considering Polish rules.
 
