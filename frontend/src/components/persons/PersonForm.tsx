@@ -60,13 +60,7 @@ export default function PersonForm({ onCreated, parentId, parentRole }: Props) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 p-4 bg-white rounded-lg shadow">
-      <h3 className="text-lg font-semibold text-[var(--color-primary)]">
-        {parentRole
-          ? `Dodaj ${parentRole === "father" ? "ojca" : parentRole === "mother" ? "matke" : parentRole === "child" ? "dziecko" : "malzonka"}`
-          : "Dodaj osobe"}
-      </h3>
-
+    <form onSubmit={handleSubmit} className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Imie</label>
@@ -74,7 +68,7 @@ export default function PersonForm({ onCreated, parentId, parentRole }: Props) {
             type="text"
             value={givenName}
             onChange={(e) => setGivenName(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
             placeholder="Jan"
           />
         </div>
@@ -84,7 +78,7 @@ export default function PersonForm({ onCreated, parentId, parentRole }: Props) {
             type="text"
             value={surname}
             onChange={(e) => setSurname(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent outline-none"
             placeholder="Kowalski"
             required
           />
@@ -96,7 +90,7 @@ export default function PersonForm({ onCreated, parentId, parentRole }: Props) {
         <select
           value={gender}
           onChange={(e) => setGender(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
         >
           <option value="">Nieznana</option>
           <option value="M">Mezczyzna</option>
@@ -111,7 +105,7 @@ export default function PersonForm({ onCreated, parentId, parentRole }: Props) {
             type="text"
             value={birthYear}
             onChange={(e) => setBirthYear(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
             placeholder="1885"
           />
         </div>
@@ -121,7 +115,7 @@ export default function PersonForm({ onCreated, parentId, parentRole }: Props) {
             type="text"
             value={birthPlace}
             onChange={(e) => setBirthPlace(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
             placeholder="Warszawa"
           />
         </div>
@@ -134,7 +128,7 @@ export default function PersonForm({ onCreated, parentId, parentRole }: Props) {
             type="text"
             value={deathYear}
             onChange={(e) => setDeathYear(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
             placeholder="1943"
           />
         </div>
@@ -144,7 +138,7 @@ export default function PersonForm({ onCreated, parentId, parentRole }: Props) {
             type="text"
             value={deathPlace}
             onChange={(e) => setDeathPlace(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
             placeholder=""
           />
         </div>

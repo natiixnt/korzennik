@@ -2,7 +2,7 @@ import { useState, useCallback } from "react";
 import { useTree } from "../hooks/useTree";
 import FamilyTree from "../components/tree/FamilyTree";
 import PersonForm from "../components/persons/PersonForm";
-import SearchPanel from "../components/search/SearchPanel";
+import PersonDetail from "../components/persons/PersonDetail";
 import DiscoveryPanel from "../components/search/DiscoveryPanel";
 import EmptyCanvas from "../components/tree/EmptyCanvas";
 import ContextMenu, { type ContextMenuItem } from "../components/tree/ContextMenu";
@@ -10,7 +10,7 @@ import { usePersons } from "../hooks/usePersons";
 import { useDeletePerson } from "../hooks/usePersons";
 import { createRelationship } from "../api/relationships";
 
-type SidePanel = "add" | "search" | "discovery" | "add-parent" | "add-child" | "add-spouse" | null;
+type SidePanel = "add" | "detail" | "discovery" | null;
 
 export default function TreePage() {
   const { data: treeData, isLoading } = useTree();
@@ -33,9 +33,6 @@ export default function TreePage() {
   } | null>(null);
 
   const selectedPersonData = persons?.find((p) => p.id === selectedPerson);
-  const displayName = selectedPersonData?.names[0]
-    ? `${selectedPersonData.names[0].given_name ?? ""} ${selectedPersonData.names[0].surname ?? ""}`.trim()
-    : undefined;
 
   const closePanel = () => {
     setSidePanel(null);
@@ -49,8 +46,7 @@ export default function TreePage() {
       y,
       items: [
         {
-          label: "Dodaj osobe",
-          icon: "+",
+          label: "Dodaj nowa osobe",
           onClick: () => {
             setLinkAfterCreate(null);
             setSidePanel("add");
@@ -58,8 +54,7 @@ export default function TreePage() {
         },
         { label: "", onClick: () => {}, divider: true },
         {
-          label: "Szukaj przodkow",
-          icon: "?",
+          label: "Szukaj przodkow automatycznie",
           onClick: () => setSidePanel("discovery"),
         },
       ],
@@ -81,17 +76,22 @@ export default function TreePage() {
         y,
         items: [
           {
-            label: `Szukaj dla: ${name}`,
-            icon: "?",
+            label: `Pokaz profil`,
             onClick: () => {
               setSelectedPerson(personId);
-              setSidePanel("search");
+              setSidePanel("detail");
+            },
+          },
+          {
+            label: "Szukaj w bazach danych",
+            onClick: () => {
+              setSelectedPerson(personId);
+              setSidePanel("detail");
             },
           },
           { label: "", onClick: () => {}, divider: true },
           {
             label: "Dodaj rodzica",
-            icon: "^",
             onClick: () => {
               setLinkAfterCreate({ targetPersonId: personId, relType: "parent" });
               setSidePanel("add");
@@ -99,15 +99,13 @@ export default function TreePage() {
           },
           {
             label: "Dodaj dziecko",
-            icon: "v",
             onClick: () => {
               setLinkAfterCreate({ targetPersonId: personId, relType: "child" });
               setSidePanel("add");
             },
           },
           {
-            label: "Dodaj malzonka",
-            icon: "=",
+            label: "Dodaj malzonka/malzonke",
             onClick: () => {
               setLinkAfterCreate({ targetPersonId: personId, relType: "spouse" });
               setSidePanel("add");
@@ -115,12 +113,15 @@ export default function TreePage() {
           },
           { label: "", onClick: () => {}, divider: true },
           {
-            label: "Usun",
-            icon: "x",
+            label: "Usun osobe",
             danger: true,
             onClick: () => {
-              if (confirm(`Usunac ${name}?`)) {
+              if (confirm(`Na pewno usunac ${name}?`)) {
                 deletePerson.mutate(personId);
+                if (selectedPerson === personId) {
+                  setSidePanel(null);
+                  setSelectedPerson(null);
+                }
               }
             },
           },
@@ -164,7 +165,7 @@ export default function TreePage() {
 
   const handleNodeClick = useCallback((id: string) => {
     setSelectedPerson(id);
-    setSidePanel("search");
+    setSidePanel("detail");
   }, []);
 
   const isEmpty = !treeData || treeData.length === 0;
@@ -172,10 +173,13 @@ export default function TreePage() {
   // Panel title
   const panelTitle = (() => {
     if (sidePanel === "discovery") return "Odkrywanie przodkow";
-    if (sidePanel === "search") return "Wyszukiwanie";
+    if (sidePanel === "detail") {
+      const n = selectedPersonData?.names[0];
+      return n ? `${n.given_name ?? ""} ${n.surname ?? ""}`.trim() : "Profil";
+    }
     if (sidePanel === "add" && linkAfterCreate) {
       const role = linkAfterCreate.relType;
-      return role === "parent" ? "Dodaj rodzica" : role === "child" ? "Dodaj dziecko" : "Dodaj malzonka";
+      return role === "parent" ? "Dodaj rodzica" : role === "child" ? "Dodaj dziecko" : "Dodaj malzonka/malzonke";
     }
     return "Nowa osoba";
   })();
@@ -246,14 +250,14 @@ export default function TreePage() {
 
           {/* Panel content */}
           <div className="flex-1 overflow-y-auto p-4">
-            {(sidePanel === "add" || sidePanel === "add-parent" || sidePanel === "add-child" || sidePanel === "add-spouse") && (
+            {sidePanel === "add" && (
               <PersonForm onCreated={handlePersonCreated} />
             )}
 
-            {sidePanel === "search" && selectedPerson && (
-              <SearchPanel
-                personId={selectedPerson}
-                personName={displayName}
+            {sidePanel === "detail" && selectedPersonData && (
+              <PersonDetail
+                person={selectedPersonData}
+                allPersons={persons ?? []}
               />
             )}
 
