@@ -1,0 +1,74 @@
+"""Build tree structure from database for frontend visualization."""
+
+from __future__ import annotations
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from ..models import Person, Relationship
+from ..schemas.tree import TreeNode, TreeNodeData, TreeNodeRels
+
+
+async def build_tree(session: AsyncSession) -> list[TreeNode]:
+    """Build full tree in family-chart compatible format."""
+    # Load all persons with their names and events
+    stmt = select(Person).options(
+        selectinload(Person.names),
+        selectinload(Person.events),
+    )
+    result = await session.execute(stmt)
+    persons = result.scalars().all()
+
+    # Load all relationships
+    rel_stmt = select(Relationship)
+    rel_result = await session.execute(rel_stmt)
+    relationships = rel_result.scalars().all()
+
+    # Build relationship maps
+    spouse_map: dict[str, list[str]] = {}
+    parent_map: dict[str, list[str]] = {}  # child_id -> parent_ids
+    child_map: dict[str, list[str]] = {}   # parent_id -> child_ids
+
+    for rel in relationships:
+        if rel.rel_type == "spouse":
+            spouse_map.setdefault(rel.person1_id, []).append(rel.person2_id)
+            spouse_map.setdefault(rel.person2_id, []).append(rel.person1_id)
+        elif rel.rel_type == "parent_child":
+            # person1 = parent, person2 = child
+            parent_map.setdefault(rel.person2_id, []).append(rel.person1_id)
+            child_map.setdefault(rel.person1_id, []).append(rel.person2_id)
+
+    # Build tree nodes
+    nodes = []
+    for person in persons:
+        # Get primary name
+        primary_name = next(
+            (n for n in person.names if n.is_primary),
+            person.names[0] if person.names else None,
+        )
+
+        # Get birth/death events
+        birth = next((e for e in person.events if e.event_type == "birth"), None)
+        death = next((e for e in person.events if e.event_type == "death"), None)
+
+        data = TreeNodeData(
+            gender=person.gender,
+            first_name=primary_name.given_name if primary_name else None,
+            last_name=primary_name.surname if primary_name else None,
+            birthday=birth.date_text if birth else None,
+            deathday=death.date_text if death else None,
+            birth_place=birth.place_text if birth else None,
+            death_place=death.place_text if death else None,
+            origin=person.origin,
+        )
+
+        rels = TreeNodeRels(
+            spouses=spouse_map.get(person.id, []),
+            parents=parent_map.get(person.id, []),
+            children=child_map.get(person.id, []),
+        )
+
+        nodes.append(TreeNode(id=person.id, data=data, rels=rels))
+
+    return nodes
