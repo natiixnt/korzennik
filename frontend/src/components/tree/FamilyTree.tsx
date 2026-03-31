@@ -36,8 +36,8 @@ interface Props {
   onEdgeDelete?: (edgeId: string, sourceId: string, targetId: string, relType: string) => void;
 }
 
-const NODE_WIDTH = 220;
-const NODE_HEIGHT = 90;
+const NODE_WIDTH = 204; // 200px + 4px border
+const NODE_HEIGHT = 84; // 80px + 4px border
 
 // Custom edge with delete button on hover
 function DeletableEdge({

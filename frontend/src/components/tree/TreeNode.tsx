@@ -3,7 +3,6 @@ import type { TreeNodeData } from "../../types/tree";
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "";
-  // If it's YYYY-MM-DD from date picker, format nicely
   const iso = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) {
     const [, y, m, d] = iso;
@@ -42,33 +41,31 @@ export default function TreeNodeComponent({ data }: NodeProps<TreeNodeData>) {
 
   return (
     <div
-      className={`rounded-xl border-2 shadow-md hover:shadow-lg transition-shadow min-w-[200px] max-w-[240px] overflow-hidden ${borderColor} ${bgColor}`}
+      className={`rounded-xl border-2 shadow-md hover:shadow-lg transition-shadow w-[200px] h-[80px] overflow-hidden ${borderColor} ${bgColor}`}
     >
       <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
 
       <div className={`h-1 ${genderBar}`} />
 
-      <div className="px-3 py-2.5">
-        <div className="font-semibold text-sm text-gray-800 leading-tight">{name}</div>
-        {dates && (
-          <p className="text-xs text-gray-500 mt-0.5">{dates}</p>
-        )}
-        {data.birth_place && (
-          <p className="text-[11px] text-gray-400 mt-0.5 truncate">{data.birth_place}</p>
-        )}
+      <div className="px-3 py-2 flex flex-col justify-center h-[calc(100%-4px)]">
+        <div className="font-semibold text-[13px] text-gray-800 leading-tight truncate">{name}</div>
+        <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+          {dates || "\u00A0"}
+        </p>
+        <p className="text-[10px] text-gray-400 truncate">
+          {data.birth_place || "\u00A0"}
+        </p>
 
         {!isUserEntered && (
-          <div className="mt-1.5">
-            <span
-              className={`inline-block text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                isAutoDiscovered
-                  ? "bg-amber-100 text-amber-700"
-                  : "bg-blue-100 text-blue-700"
-              }`}
-            >
-              {isAutoDiscovered ? "Odkryty" : "Ze zrodla"}
-            </span>
-          </div>
+          <span
+            className={`self-start mt-0.5 text-[9px] px-1.5 py-0 rounded-full font-medium ${
+              isAutoDiscovered
+                ? "bg-amber-100 text-amber-700"
+                : "bg-blue-100 text-blue-700"
+            }`}
+          >
+            {isAutoDiscovered ? "Odkryty" : "Ze zrodla"}
+          </span>
         )}
       </div>
 
