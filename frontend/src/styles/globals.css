@@ -4,7 +4,7 @@
   --color-primary: #2d5016;
   --color-primary-light: #4a7c28;
   --color-secondary: #8b6914;
-  --color-bg: #faf8f5;
+  --color-bg: #faf9f7;
   --color-surface: #ffffff;
   --color-text: #1a1a1a;
   --color-text-muted: #6b7280;
@@ -18,4 +18,71 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text);
   font-family: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+/* ReactFlow overrides */
+.react-flow__node {
+  cursor: pointer !important;
+}
+
+.react-flow__node:hover {
+  z-index: 10 !important;
+}
+
+.react-flow__controls {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+.react-flow__minimap {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Context menu animation */
+@keyframes contextMenuIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-in {
+  animation: contextMenuIn 0.1s ease-out;
+}
+
+/* Smooth panel transitions */
+.panel-enter {
+  animation: slideIn 0.15s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
