@@ -12,43 +12,46 @@ from ..schemas.tree import TreeNode, TreeNodeData, TreeNodeRels
 
 async def build_tree(session: AsyncSession) -> list[TreeNode]:
     """Build full tree in family-chart compatible format."""
-    # Load all persons with their names and events
     stmt = select(Person).options(
         selectinload(Person.names),
         selectinload(Person.events),
     )
     result = await session.execute(stmt)
     persons = result.scalars().all()
+    person_ids = {p.id for p in persons}
 
-    # Load all relationships
     rel_stmt = select(Relationship)
     rel_result = await session.execute(rel_stmt)
     relationships = rel_result.scalars().all()
 
-    # Build relationship maps
-    spouse_map: dict[str, list[str]] = {}
-    parent_map: dict[str, list[str]] = {}  # child_id -> parent_ids
-    child_map: dict[str, list[str]] = {}   # parent_id -> child_ids
+    # Build relationship maps with deduplication
+    spouse_map: dict[str, set[str]] = {}
+    parent_map: dict[str, set[str]] = {}  # child_id -> parent_ids
+    child_map: dict[str, set[str]] = {}   # parent_id -> child_ids
 
     for rel in relationships:
+        # Skip relationships referencing non-existent persons
+        if rel.person1_id not in person_ids or rel.person2_id not in person_ids:
+            continue
+        # Skip self-references
+        if rel.person1_id == rel.person2_id:
+            continue
+
         if rel.rel_type == "spouse":
-            spouse_map.setdefault(rel.person1_id, []).append(rel.person2_id)
-            spouse_map.setdefault(rel.person2_id, []).append(rel.person1_id)
+            spouse_map.setdefault(rel.person1_id, set()).add(rel.person2_id)
+            spouse_map.setdefault(rel.person2_id, set()).add(rel.person1_id)
         elif rel.rel_type == "parent_child":
             # person1 = parent, person2 = child
-            parent_map.setdefault(rel.person2_id, []).append(rel.person1_id)
-            child_map.setdefault(rel.person1_id, []).append(rel.person2_id)
+            parent_map.setdefault(rel.person2_id, set()).add(rel.person1_id)
+            child_map.setdefault(rel.person1_id, set()).add(rel.person2_id)
 
-    # Build tree nodes
     nodes = []
     for person in persons:
-        # Get primary name
         primary_name = next(
             (n for n in person.names if n.is_primary),
             person.names[0] if person.names else None,
         )
 
-        # Get birth/death events
         birth = next((e for e in person.events if e.event_type == "birth"), None)
         death = next((e for e in person.events if e.event_type == "death"), None)
 
@@ -64,9 +67,9 @@ async def build_tree(session: AsyncSession) -> list[TreeNode]:
         )
 
         rels = TreeNodeRels(
-            spouses=spouse_map.get(person.id, []),
-            parents=parent_map.get(person.id, []),
-            children=child_map.get(person.id, []),
+            spouses=sorted(spouse_map.get(person.id, set())),
+            parents=sorted(parent_map.get(person.id, set())),
+            children=sorted(child_map.get(person.id, set())),
         )
 
         nodes.append(TreeNode(id=person.id, data=data, rels=rels))

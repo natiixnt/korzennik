@@ -1,7 +1,7 @@
 """CRUD endpoints for relationships."""
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
@@ -15,6 +15,32 @@ router = APIRouter(prefix="/api/relationships", tags=["relationships"])
 async def create_relationship(
     data: RelationshipCreate, db: AsyncSession = Depends(get_db)
 ):
+    # Prevent self-referencing
+    if data.person1_id == data.person2_id:
+        raise HTTPException(400, "Cannot create relationship with self")
+
+    # Prevent duplicates (check both directions for spouse)
+    if data.rel_type == "spouse":
+        dup = await db.execute(
+            select(Relationship).where(
+                Relationship.rel_type == "spouse",
+                or_(
+                    and_(Relationship.person1_id == data.person1_id, Relationship.person2_id == data.person2_id),
+                    and_(Relationship.person1_id == data.person2_id, Relationship.person2_id == data.person1_id),
+                ),
+            )
+        )
+    else:
+        dup = await db.execute(
+            select(Relationship).where(
+                Relationship.rel_type == data.rel_type,
+                Relationship.person1_id == data.person1_id,
+                Relationship.person2_id == data.person2_id,
+            )
+        )
+    if dup.scalar_one_or_none():
+        raise HTTPException(409, "Relationship already exists")
+
     rel = Relationship(
         person1_id=data.person1_id,
         person2_id=data.person2_id,
