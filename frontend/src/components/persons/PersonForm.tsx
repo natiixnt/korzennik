@@ -4,11 +4,9 @@ import type { PersonCreate } from "../../types/person";
 
 interface Props {
   onCreated?: (id: string) => void;
-  parentId?: string;
-  parentRole?: "father" | "mother" | "child" | "spouse";
 }
 
-export default function PersonForm({ onCreated, parentId, parentRole }: Props) {
+export default function PersonForm({ onCreated }: Props) {
   const [givenName, setGivenName] = useState("");
   const [surname, setSurname] = useState("");
   const [gender, setGender] = useState<string>("");

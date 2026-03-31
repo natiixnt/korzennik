@@ -29,6 +29,24 @@ body {
   z-index: 10 !important;
 }
 
+/* Remove ReactFlow selection outlines */
+.react-flow__node.selected,
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.react-flow__node.selected > div {
+  box-shadow: none !important;
+}
+
+/* Prevent browser default context menu highlight */
+.react-flow__pane {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .react-flow__controls {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
 }

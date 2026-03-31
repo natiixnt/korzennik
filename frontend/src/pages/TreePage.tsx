@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useTree } from "../hooks/useTree";
 import FamilyTree from "../components/tree/FamilyTree";
 import PersonForm from "../components/persons/PersonForm";
@@ -6,8 +6,7 @@ import PersonDetail from "../components/persons/PersonDetail";
 import DiscoveryPanel from "../components/search/DiscoveryPanel";
 import EmptyCanvas from "../components/tree/EmptyCanvas";
 import ContextMenu, { type ContextMenuItem } from "../components/tree/ContextMenu";
-import { usePersons } from "../hooks/usePersons";
-import { useDeletePerson } from "../hooks/usePersons";
+import { usePersons, useDeletePerson } from "../hooks/usePersons";
 import { createRelationship } from "../api/relationships";
 
 type SidePanel = "add" | "detail" | "discovery" | null;
@@ -32,14 +31,21 @@ export default function TreePage() {
     relType: "parent" | "child" | "spouse";
   } | null>(null);
 
+  // Use ref so callbacks always see current value
+  const selectedPersonRef = useRef(selectedPerson);
+  selectedPersonRef.current = selectedPerson;
+
   const selectedPersonData = persons?.find((p) => p.id === selectedPerson);
 
   const closePanel = () => {
     setSidePanel(null);
+    setSelectedPerson(null);
     setLinkAfterCreate(null);
   };
 
-  // Canvas right-click: add new person
+  const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
+
+  // Canvas right-click
   const handleCanvasRightClick = useCallback((x: number, y: number) => {
     setCtxMenu({
       x,
@@ -61,7 +67,7 @@ export default function TreePage() {
     });
   }, []);
 
-  // Node right-click: actions for that person
+  // Node right-click - does NOT open side panel, only shows menu
   const handleNodeRightClick = useCallback(
     (personId: string, x: number, y: number) => {
       const person = persons?.find((p) => p.id === personId);
@@ -69,21 +75,12 @@ export default function TreePage() {
         ? `${person.names[0].given_name ?? ""} ${person.names[0].surname ?? ""}`.trim()
         : "Osoba";
 
-      setSelectedPerson(personId);
-
       setCtxMenu({
         x,
         y,
         items: [
           {
-            label: `Pokaz profil`,
-            onClick: () => {
-              setSelectedPerson(personId);
-              setSidePanel("detail");
-            },
-          },
-          {
-            label: "Szukaj w bazach danych",
+            label: "Pokaz profil",
             onClick: () => {
               setSelectedPerson(personId);
               setSidePanel("detail");
@@ -118,7 +115,7 @@ export default function TreePage() {
             onClick: () => {
               if (confirm(`Na pewno usunac ${name}?`)) {
                 deletePerson.mutate(personId);
-                if (selectedPerson === personId) {
+                if (selectedPersonRef.current === personId) {
                   setSidePanel(null);
                   setSelectedPerson(null);
                 }
@@ -130,6 +127,17 @@ export default function TreePage() {
     },
     [persons, deletePerson]
   );
+
+  // Left-click on node opens detail panel
+  const handleNodeClick = useCallback((id: string) => {
+    // Empty string = clicked on empty pane
+    if (!id) {
+      // Don't close panel on pane click, just deselect
+      return;
+    }
+    setSelectedPerson(id);
+    setSidePanel("detail");
+  }, []);
 
   // After creating a person, link them if needed
   const handlePersonCreated = async (newPersonId: string) => {
@@ -160,17 +168,13 @@ export default function TreePage() {
       }
       setLinkAfterCreate(null);
     }
-    setSidePanel(null);
-  };
-
-  const handleNodeClick = useCallback((id: string) => {
-    setSelectedPerson(id);
+    // After creating, show the new person's detail
+    setSelectedPerson(newPersonId);
     setSidePanel("detail");
-  }, []);
+  };
 
   const isEmpty = !treeData || treeData.length === 0;
 
-  // Panel title
   const panelTitle = (() => {
     if (sidePanel === "discovery") return "Odkrywanie przodkow";
     if (sidePanel === "detail") {
@@ -206,7 +210,7 @@ export default function TreePage() {
           />
         )}
 
-        {/* Bottom toolbar - only when tree has nodes */}
+        {/* Bottom toolbar */}
         {!isEmpty && (
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/90 backdrop-blur-sm rounded-xl shadow-lg border border-gray-200 px-2 py-1.5">
             <ToolbarButton
@@ -235,20 +239,18 @@ export default function TreePage() {
       {/* Side panel */}
       {sidePanel && (
         <div className="w-[420px] border-l border-gray-200 bg-white flex flex-col shadow-xl">
-          {/* Panel header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <h2 className="text-base font-semibold text-[var(--color-primary)]">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
+            <h2 className="text-base font-semibold text-[var(--color-primary)] truncate pr-2">
               {panelTitle}
             </h2>
             <button
               onClick={closePanel}
-              className="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors shrink-0"
             >
               x
             </button>
           </div>
 
-          {/* Panel content */}
           <div className="flex-1 overflow-y-auto p-4">
             {sidePanel === "add" && (
               <PersonForm onCreated={handlePersonCreated} />
@@ -272,7 +274,7 @@ export default function TreePage() {
           x={ctxMenu.x}
           y={ctxMenu.y}
           items={ctxMenu.items}
-          onClose={() => setCtxMenu(null)}
+          onClose={closeCtxMenu}
         />
       )}
     </div>

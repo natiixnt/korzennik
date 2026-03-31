@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -7,14 +7,12 @@ import ReactFlow, {
   type Node,
   type NodeTypes,
   Position,
-  useReactFlow,
   ReactFlowProvider,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import dagre from "@dagrejs/dagre";
 import type { TreeNode as TreeNodeType } from "../../types/tree";
 import TreeNodeComponent from "./TreeNode";
-import ContextMenu, { type ContextMenuItem } from "./ContextMenu";
 
 const nodeTypes: NodeTypes = {
   person: TreeNodeComponent,
@@ -25,7 +23,6 @@ interface Props {
   onNodeClick?: (personId: string) => void;
   onNodeRightClick?: (personId: string, x: number, y: number) => void;
   onCanvasRightClick?: (x: number, y: number) => void;
-  onAddPerson?: () => void;
 }
 
 function buildLayout(treeData: TreeNodeType[]) {
@@ -65,6 +62,8 @@ function buildLayout(treeData: TreeNodeType[]) {
       data: tn.data,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
+      // Prevent ReactFlow selection highlight
+      selectable: false,
     };
   });
 
@@ -77,7 +76,6 @@ function buildLayout(treeData: TreeNodeType[]) {
         target: node.id,
         type: "smoothstep",
         style: { stroke: "#94a3b8", strokeWidth: 2 },
-        animated: false,
       });
     }
     for (const spouseId of node.rels.spouses) {
@@ -118,6 +116,7 @@ function FamilyTreeInner({
   const handleNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
       event.preventDefault();
+      event.stopPropagation();
       onNodeRightClick?.(node.id, event.clientX, event.clientY);
     },
     [onNodeRightClick]
@@ -134,6 +133,11 @@ function FamilyTreeInner({
     [onCanvasRightClick]
   );
 
+  // Click on empty pane clears selection
+  const handlePaneClick = useCallback(() => {
+    onNodeClick?.("");
+  }, [onNodeClick]);
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -142,6 +146,7 @@ function FamilyTreeInner({
       onNodeClick={handleNodeClick}
       onNodeContextMenu={handleNodeContextMenu}
       onPaneContextMenu={handlePaneContextMenu}
+      onPaneClick={handlePaneClick}
       fitView
       fitViewOptions={{ padding: 0.3 }}
       minZoom={0.05}
@@ -150,6 +155,8 @@ function FamilyTreeInner({
       nodesDraggable={true}
       panOnDrag={[0, 1]}
       selectionOnDrag={false}
+      nodesConnectable={false}
+      elementsSelectable={false}
     >
       <Background color="#d4d4d8" gap={20} size={1} />
       <Controls

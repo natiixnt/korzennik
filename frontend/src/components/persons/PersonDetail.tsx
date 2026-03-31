@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Person } from "../../types/person";
 import { useTriggerSearch, useSearchResults, useConfirmMatch, useRejectMatch } from "../../hooks/useSearch";
 import { fetchRelationships } from "../../api/relationships";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import MatchCard from "../search/MatchCard";
 
 interface Props {
@@ -10,10 +10,15 @@ interface Props {
   allPersons: Person[];
 }
 
-type Tab = "info" | "search" | "edit";
+type Tab = "info" | "search";
 
 export default function PersonDetail({ person, allPersons }: Props) {
   const [tab, setTab] = useState<Tab>("info");
+
+  // Reset to info tab when switching persons
+  useEffect(() => {
+    setTab("info");
+  }, [person.id]);
   const primaryName = person.names.find((n) => n.is_primary) ?? person.names[0];
   const birth = person.events.find((e) => e.event_type === "birth");
   const death = person.events.find((e) => e.event_type === "death");

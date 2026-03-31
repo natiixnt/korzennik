@@ -2,7 +2,6 @@ import { useEffect, useRef, useLayoutEffect, useState } from "react";
 
 export interface ContextMenuItem {
   label: string;
-  icon?: string;
   onClick: () => void;
   danger?: boolean;
   divider?: boolean;
@@ -38,20 +37,36 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
   }, [x, y]);
 
   useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
+    const handleAny = () => onClose();
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    // Close on any mousedown OR right-click anywhere outside
+    const handleMouseDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         onClose();
       }
     };
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    // Also close on contextmenu (right-click) outside
+    const handleContextMenu = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onClose();
+      }
     };
-    // Use capture so we close before other handlers
-    document.addEventListener("mousedown", handleClick, true);
+    // Close on scroll
+    const handleScroll = () => onClose();
+
+    document.addEventListener("mousedown", handleMouseDown, true);
+    document.addEventListener("contextmenu", handleContextMenu, true);
     document.addEventListener("keydown", handleEsc);
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleAny);
     return () => {
-      document.removeEventListener("mousedown", handleClick, true);
+      document.removeEventListener("mousedown", handleMouseDown, true);
+      document.removeEventListener("contextmenu", handleContextMenu, true);
       document.removeEventListener("keydown", handleEsc);
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleAny);
     };
   }, [onClose]);
 
@@ -61,7 +76,7 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
       style={{ position: "fixed", left: pos.x, top: pos.y, zIndex: 1000 }}
       className="animate-in"
     >
-      <div className="bg-white rounded-lg shadow-2xl border border-gray-200/80 py-1.5 min-w-[180px] backdrop-blur-sm">
+      <div className="bg-white rounded-lg shadow-2xl border border-gray-200/80 py-1.5 min-w-[180px]">
         {items.map((item, i) =>
           item.divider ? (
             <div key={i} className="border-t border-gray-100 my-1" />
@@ -72,15 +87,12 @@ export default function ContextMenu({ x, y, items, onClose }: Props) {
                 item.onClick();
                 onClose();
               }}
-              className={`w-full text-left px-3 py-[7px] text-[13px] flex items-center gap-2.5 transition-colors ${
+              className={`w-full text-left px-3 py-[7px] text-[13px] transition-colors ${
                 item.danger
                   ? "text-red-600 hover:bg-red-50"
                   : "text-gray-700 hover:bg-[var(--color-primary)]/5 hover:text-[var(--color-primary)]"
               }`}
             >
-              {item.icon && (
-                <span className="w-4 text-center text-xs opacity-60">{item.icon}</span>
-              )}
               {item.label}
             </button>
           )
