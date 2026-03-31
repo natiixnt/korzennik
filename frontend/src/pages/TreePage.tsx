@@ -7,13 +7,19 @@ import DiscoveryPanel from "../components/search/DiscoveryPanel";
 import EmptyCanvas from "../components/tree/EmptyCanvas";
 import ContextMenu, { type ContextMenuItem } from "../components/tree/ContextMenu";
 import { usePersons, useDeletePerson } from "../hooks/usePersons";
-import { createRelationship } from "../api/relationships";
+import { createRelationship, fetchAllRelationships, deleteRelationship } from "../api/relationships";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 type SidePanel = "add" | "detail" | "discovery" | null;
 
 export default function TreePage() {
+  const qc = useQueryClient();
   const { data: treeData, isLoading } = useTree();
   const { data: persons } = usePersons();
+  const { data: allRels } = useQuery({
+    queryKey: ["all-relationships"],
+    queryFn: fetchAllRelationships,
+  });
   const deletePerson = useDeletePerson();
   const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
   const [sidePanel, setSidePanel] = useState<SidePanel>(null);
@@ -128,6 +134,44 @@ export default function TreePage() {
     [persons, deletePerson]
   );
 
+  // Edge delete: find the relationship by person IDs and delete it
+  const handleEdgeDelete = useCallback(
+    async (_edgeId: string, sourceId: string, targetId: string, relType: string) => {
+      if (!allRels) return;
+
+      // Find matching relationship
+      const rel = allRels.find((r) => {
+        if (relType === "parent_child") {
+          return r.rel_type === "parent_child" && r.person1_id === sourceId && r.person2_id === targetId;
+        }
+        if (relType === "spouse") {
+          return (
+            r.rel_type === "spouse" &&
+            ((r.person1_id === sourceId && r.person2_id === targetId) ||
+             (r.person1_id === targetId && r.person2_id === sourceId))
+          );
+        }
+        return false;
+      });
+
+      if (!rel) return;
+
+      const label = relType === "spouse" ? "malzenstwo" : "relacje rodzic-dziecko";
+      if (!confirm(`Usunac ${label}?`)) return;
+
+      try {
+        await deleteRelationship(rel.id);
+        qc.invalidateQueries({ queryKey: ["tree"] });
+        qc.invalidateQueries({ queryKey: ["all-relationships"] });
+        qc.invalidateQueries({ queryKey: ["persons"] });
+        qc.invalidateQueries({ queryKey: ["relationships"] });
+      } catch (e) {
+        console.error("Failed to delete relationship:", e);
+      }
+    },
+    [allRels, qc]
+  );
+
   // Left-click on node opens detail panel
   const handleNodeClick = useCallback((id: string) => {
     // Empty string = clicked on empty pane
@@ -207,6 +251,7 @@ export default function TreePage() {
             onNodeClick={handleNodeClick}
             onNodeRightClick={handleNodeRightClick}
             onCanvasRightClick={handleCanvasRightClick}
+            onEdgeDelete={handleEdgeDelete}
           />
         )}
 

@@ -8,6 +8,11 @@ export async function createRelationship(
   return data;
 }
 
+export async function fetchAllRelationships(): Promise<Relationship[]> {
+  const { data } = await api.get<Relationship[]>("/relationships");
+  return data;
+}
+
 export async function fetchRelationships(
   personId: string
 ): Promise<Relationship[]> {
@@ -15,4 +20,8 @@ export async function fetchRelationships(
     `/relationships/person/${personId}`
   );
   return data;
+}
+
+export async function deleteRelationship(relId: number): Promise<void> {
+  await api.delete(`/relationships/${relId}`);
 }

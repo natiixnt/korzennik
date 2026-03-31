@@ -5,13 +5,19 @@ import ReactFlow, {
   ControlButton,
   MiniMap,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeTypes,
+  type EdgeTypes,
   Position,
   ReactFlowProvider,
   useReactFlow,
   useNodesState,
   useEdgesState,
+  BaseEdge,
+  getSmoothStepPath,
+  getStraightPath,
+  EdgeLabelRenderer,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import dagre from "@dagrejs/dagre";
@@ -27,16 +33,97 @@ interface Props {
   onNodeClick?: (personId: string) => void;
   onNodeRightClick?: (personId: string, x: number, y: number) => void;
   onCanvasRightClick?: (x: number, y: number) => void;
+  onEdgeDelete?: (edgeId: string, sourceId: string, targetId: string, relType: string) => void;
 }
 
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 90;
 
-function computeLayout(treeData: TreeNodeType[]) {
-  // Build a lookup for quick access
+// Custom edge with delete button on hover
+function DeletableEdge({
+  id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data,
+}: EdgeProps) {
+  const [path, labelX, labelY] = getSmoothStepPath({
+    sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
+  });
+
+  return (
+    <>
+      <BaseEdge id={id} path={path} style={style} />
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: "absolute",
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: "all",
+          }}
+          className="group"
+        >
+          <button
+            className="w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:border-red-300 hover:text-red-500 transition-all shadow-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              const handler = (data as any)?._onDelete;
+              if (handler) handler();
+            }}
+            title="Usun polaczenie"
+          >
+            x
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+function DeletableSpouseEdge({
+  id, sourceX, sourceY, targetX, targetY, style, data,
+}: EdgeProps) {
+  const [path, labelX, labelY] = getStraightPath({
+    sourceX, sourceY, targetX, targetY,
+  });
+
+  return (
+    <>
+      <BaseEdge id={id} path={path} style={style} />
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: "absolute",
+            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+            pointerEvents: "all",
+          }}
+          className="group"
+        >
+          <button
+            className="w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:border-red-300 hover:text-red-500 transition-all shadow-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              const handler = (data as any)?._onDelete;
+              if (handler) handler();
+            }}
+            title="Usun polaczenie"
+          >
+            x
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+
+const edgeTypes: EdgeTypes = {
+  deletableStep: DeletableEdge,
+  deletableSpouse: DeletableSpouseEdge,
+};
+
+function computeLayout(
+  treeData: TreeNodeType[],
+  onEdgeDelete?: (edgeId: string, sourceId: string, targetId: string, relType: string) => void,
+) {
   const nodeMap = new Map(treeData.map((n) => [n.id, n]));
 
-  // Collect spouse pairs (deduplicated)
+  // Spouse pairs
   const spousePairs: [string, string][] = [];
   const spouseSeen = new Set<string>();
   for (const node of treeData) {
@@ -49,15 +136,9 @@ function computeLayout(treeData: TreeNodeType[]) {
     }
   }
 
-  // For dagre: merge each spouse pair into a single "family" node,
-  // then split them apart after layout. This guarantees same rank
-  // and proper child routing.
-  //
-  // Strategy: pick one person from each spouse pair as the "primary"
-  // (the one dagre positions), then offset the spouse next to them.
-  const spouseOf = new Map<string, string>(); // secondary -> primary
+  // Merge spouse pairs: secondary -> primary
+  const spouseOf = new Map<string, string>();
   for (const [a, b] of spousePairs) {
-    // The one with more parent-child connections is primary
     const aConns = (nodeMap.get(a)?.rels.children.length ?? 0) + (nodeMap.get(a)?.rels.parents.length ?? 0);
     const bConns = (nodeMap.get(b)?.rels.children.length ?? 0) + (nodeMap.get(b)?.rels.parents.length ?? 0);
     if (aConns >= bConns) {
@@ -69,34 +150,21 @@ function computeLayout(treeData: TreeNodeType[]) {
 
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({
-    rankdir: "TB",
-    nodesep: 60,
-    ranksep: 120,
-    marginx: 40,
-    marginy: 40,
-  });
+  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 120, marginx: 40, marginy: 40 });
 
-  // Add all nodes - secondary spouses get double width to reserve space
   for (const node of treeData) {
-    if (spouseOf.has(node.id)) {
-      // Secondary spouse: skip from dagre, will be placed manually
-      continue;
-    }
-    // If this node has a spouse, make it wider to reserve space for both
+    if (spouseOf.has(node.id)) continue;
     const hasSpouse = [...spouseOf.values()].includes(node.id);
     const width = hasSpouse ? NODE_WIDTH * 2 + 40 : NODE_WIDTH;
     g.setNode(node.id, { width, height: NODE_HEIGHT });
   }
 
-  // Add parent->child edges
-  // If a parent is a secondary spouse, redirect edge to their primary
   const edgeSet = new Set<string>();
   for (const node of treeData) {
     for (const parentId of node.rels.parents) {
       const effectiveParent = spouseOf.get(parentId) ?? parentId;
       const effectiveChild = spouseOf.has(node.id) ? undefined : node.id;
-      if (!effectiveChild) continue; // child is secondary spouse, skip
+      if (!effectiveChild) continue;
       const key = `${effectiveParent}->${effectiveChild}`;
       if (!edgeSet.has(key)) {
         g.setEdge(effectiveParent, effectiveChild);
@@ -107,28 +175,17 @@ function computeLayout(treeData: TreeNodeType[]) {
 
   dagre.layout(g);
 
-  // Build final positions
   const positions = new Map<string, { x: number; y: number }>();
-
   for (const node of treeData) {
-    if (spouseOf.has(node.id)) continue; // handle below
-
+    if (spouseOf.has(node.id)) continue;
     const pos = g.node(node.id);
     if (!pos) continue;
-
     const hasSpouse = [...spouseOf.entries()].find(([_, primary]) => primary === node.id);
     if (hasSpouse) {
-      // Primary spouse: shift left, put secondary to the right
       const [secondaryId] = hasSpouse;
       const gap = 20;
-      positions.set(node.id, {
-        x: pos.x - (NODE_WIDTH + gap) / 2,
-        y: pos.y,
-      });
-      positions.set(secondaryId, {
-        x: pos.x + (NODE_WIDTH + gap) / 2,
-        y: pos.y,
-      });
+      positions.set(node.id, { x: pos.x - (NODE_WIDTH + gap) / 2, y: pos.y });
+      positions.set(secondaryId, { x: pos.x + (NODE_WIDTH + gap) / 2, y: pos.y });
     } else {
       positions.set(node.id, { x: pos.x, y: pos.y });
     }
@@ -139,10 +196,7 @@ function computeLayout(treeData: TreeNodeType[]) {
     return {
       id: tn.id,
       type: "person",
-      position: {
-        x: p.x - NODE_WIDTH / 2,
-        y: p.y - NODE_HEIGHT / 2,
-      },
+      position: { x: p.x - NODE_WIDTH / 2, y: p.y - NODE_HEIGHT / 2 },
       data: tn.data,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
@@ -150,32 +204,37 @@ function computeLayout(treeData: TreeNodeType[]) {
     };
   });
 
-  // Build visual edges
   const edges: Edge[] = [];
   for (const node of treeData) {
     for (const parentId of node.rels.parents) {
+      const edgeId = `pc-${parentId}-${node.id}`;
       edges.push({
-        id: `pc-${parentId}-${node.id}`,
+        id: edgeId,
         source: parentId,
         target: node.id,
-        type: "smoothstep",
+        type: "deletableStep",
         style: { stroke: "#94a3b8", strokeWidth: 2 },
+        data: {
+          _onDelete: onEdgeDelete
+            ? () => onEdgeDelete(edgeId, parentId, node.id, "parent_child")
+            : undefined,
+        },
       });
     }
     for (const spouseId of node.rels.spouses) {
       if (node.id < spouseId) {
+        const edgeId = `sp-${node.id}-${spouseId}`;
         edges.push({
-          id: `sp-${node.id}-${spouseId}`,
+          id: edgeId,
           source: node.id,
           target: spouseId,
-          type: "straight",
-          style: {
-            stroke: "#e11d48",
-            strokeWidth: 1.5,
-            strokeDasharray: "6,4",
+          type: "deletableSpouse",
+          style: { stroke: "#e11d48", strokeWidth: 1.5, strokeDasharray: "6,4" },
+          data: {
+            _onDelete: onEdgeDelete
+              ? () => onEdgeDelete(edgeId, node.id, spouseId, "spouse")
+              : undefined,
           },
-          // No arrow
-          markerEnd: undefined,
         });
       }
     }
@@ -189,31 +248,28 @@ function FamilyTreeInner({
   onNodeClick,
   onNodeRightClick,
   onCanvasRightClick,
+  onEdgeDelete,
 }: Props) {
-  const initialLayout = useMemo(() => computeLayout(treeData), [treeData]);
+  const initialLayout = useMemo(() => computeLayout(treeData, onEdgeDelete), [treeData, onEdgeDelete]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialLayout.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialLayout.edges);
   const { fitView } = useReactFlow();
 
-  // Sync when treeData changes
   useMemo(() => {
-    const layout = computeLayout(treeData);
+    const layout = computeLayout(treeData, onEdgeDelete);
     setNodes(layout.nodes);
     setEdges(layout.edges);
-  }, [treeData, setNodes, setEdges]);
+  }, [treeData, onEdgeDelete, setNodes, setEdges]);
 
-  // Auto-layout: reset all positions
   const handleAutoLayout = useCallback(() => {
-    const layout = computeLayout(treeData);
+    const layout = computeLayout(treeData, onEdgeDelete);
     setNodes(layout.nodes);
     setEdges(layout.edges);
     setTimeout(() => fitView({ padding: 0.3, duration: 300 }), 50);
-  }, [treeData, setNodes, setEdges, fitView]);
+  }, [treeData, onEdgeDelete, setNodes, setEdges, fitView]);
 
   const handleNodeClick = useCallback(
-    (_: React.MouseEvent, node: Node) => {
-      onNodeClick?.(node.id);
-    },
+    (_: React.MouseEvent, node: Node) => { onNodeClick?.(node.id); },
     [onNodeClick]
   );
 
@@ -229,23 +285,19 @@ function FamilyTreeInner({
   const handlePaneContextMenu = useCallback(
     (event: React.MouseEvent | MouseEvent) => {
       event.preventDefault();
-      onCanvasRightClick?.(
-        (event as MouseEvent).clientX,
-        (event as MouseEvent).clientY
-      );
+      onCanvasRightClick?.((event as MouseEvent).clientX, (event as MouseEvent).clientY);
     },
     [onCanvasRightClick]
   );
 
-  const handlePaneClick = useCallback(() => {
-    onNodeClick?.("");
-  }, [onNodeClick]);
+  const handlePaneClick = useCallback(() => { onNodeClick?.(""); }, [onNodeClick]);
 
   return (
     <ReactFlow
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onNodeClick={handleNodeClick}
@@ -268,10 +320,7 @@ function FamilyTreeInner({
       zoomOnDoubleClick={false}
     >
       <Background color="#d4d4d8" gap={20} size={1} />
-      <Controls
-        showInteractive={false}
-        className="!shadow-md !border-gray-200 !rounded-lg"
-      >
+      <Controls showInteractive={false} className="!shadow-md !border-gray-200 !rounded-lg">
         <ControlButton onClick={handleAutoLayout} title="Wyrownaj uklad">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <rect x="1" y="1" width="5" height="5" rx="1" />

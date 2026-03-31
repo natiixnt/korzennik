@@ -28,6 +28,12 @@ async def create_relationship(
     return rel
 
 
+@router.get("", response_model=list[RelationshipOut])
+async def list_all_relationships(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Relationship))
+    return result.scalars().all()
+
+
 @router.get("/person/{person_id}", response_model=list[RelationshipOut])
 async def get_relationships_for_person(
     person_id: str, db: AsyncSession = Depends(get_db)
