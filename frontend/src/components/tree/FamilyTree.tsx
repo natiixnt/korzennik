@@ -1,13 +1,17 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
+  ControlButton,
   MiniMap,
   type Edge,
   type Node,
   type NodeTypes,
   Position,
   ReactFlowProvider,
+  useReactFlow,
+  useNodesState,
+  useEdgesState,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import dagre from "@dagrejs/dagre";
@@ -25,16 +29,16 @@ interface Props {
   onCanvasRightClick?: (x: number, y: number) => void;
 }
 
-function buildLayout(treeData: TreeNodeType[]) {
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 90;
+
+function computeLayout(treeData: TreeNodeType[]) {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: "TB", nodesep: 80, ranksep: 120, marginx: 40, marginy: 40 });
 
-  const nodeWidth = 220;
-  const nodeHeight = 90;
-
   for (const node of treeData) {
-    g.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   }
 
   const edgeSet = new Set<string>();
@@ -56,13 +60,12 @@ function buildLayout(treeData: TreeNodeType[]) {
       id: tn.id,
       type: "person",
       position: {
-        x: (pos?.x ?? 0) - nodeWidth / 2,
-        y: (pos?.y ?? 0) - nodeHeight / 2,
+        x: (pos?.x ?? 0) - NODE_WIDTH / 2,
+        y: (pos?.y ?? 0) - NODE_HEIGHT / 2,
       },
       data: tn.data,
       sourcePosition: Position.Bottom,
       targetPosition: Position.Top,
-      // Prevent ReactFlow selection highlight
       selectable: false,
     };
   });
@@ -104,7 +107,27 @@ function FamilyTreeInner({
   onNodeRightClick,
   onCanvasRightClick,
 }: Props) {
-  const { nodes, edges } = useMemo(() => buildLayout(treeData), [treeData]);
+  const initialLayout = useMemo(() => computeLayout(treeData), [treeData]);
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialLayout.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialLayout.edges);
+  const { fitView } = useReactFlow();
+
+  // Sync when treeData changes (new person added etc.)
+  const prevDataRef = useMemo(() => ({ len: treeData.length }), [treeData]);
+  useMemo(() => {
+    const layout = computeLayout(treeData);
+    setNodes(layout.nodes);
+    setEdges(layout.edges);
+  }, [treeData, setNodes, setEdges]);
+
+  // Auto-layout: reset all positions to dagre layout
+  const handleAutoLayout = useCallback(() => {
+    const layout = computeLayout(treeData);
+    setNodes(layout.nodes);
+    setEdges(layout.edges);
+    // Slight delay to let React render new positions before fitting
+    setTimeout(() => fitView({ padding: 0.3, duration: 300 }), 50);
+  }, [treeData, setNodes, setEdges, fitView]);
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -133,7 +156,6 @@ function FamilyTreeInner({
     [onCanvasRightClick]
   );
 
-  // Click on empty pane clears selection
   const handlePaneClick = useCallback(() => {
     onNodeClick?.("");
   }, [onNodeClick]);
@@ -143,6 +165,8 @@ function FamilyTreeInner({
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
       onNodeClick={handleNodeClick}
       onNodeContextMenu={handleNodeContextMenu}
       onPaneContextMenu={handlePaneContextMenu}
@@ -153,16 +177,34 @@ function FamilyTreeInner({
       maxZoom={2.5}
       proOptions={{ hideAttribution: true }}
       nodesDraggable={true}
-      panOnDrag={[0, 1]}
+      /* Touchpad: scroll = pan, pinch = zoom */
+      panOnScroll={true}
+      zoomOnScroll={false}
+      panOnDrag={true}
       selectionOnDrag={false}
       nodesConnectable={false}
       elementsSelectable={false}
+      zoomOnPinch={true}
+      zoomOnDoubleClick={false}
     >
       <Background color="#d4d4d8" gap={20} size={1} />
       <Controls
         showInteractive={false}
         className="!shadow-md !border-gray-200 !rounded-lg"
-      />
+      >
+        {/* Auto-layout button inside the controls panel */}
+        <ControlButton onClick={handleAutoLayout} title="Wyrownaj uklad">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="1" y="1" width="5" height="5" rx="1" />
+            <rect x="10" y="1" width="5" height="5" rx="1" />
+            <rect x="5.5" y="10" width="5" height="5" rx="1" />
+            <line x1="3.5" y1="6" x2="3.5" y2="8" />
+            <line x1="12.5" y1="6" x2="12.5" y2="8" />
+            <line x1="3.5" y1="8" x2="12.5" y2="8" />
+            <line x1="8" y1="8" x2="8" y2="10" />
+          </svg>
+        </ControlButton>
+      </Controls>
       <MiniMap
         nodeColor={(node) => {
           const d = node.data as any;

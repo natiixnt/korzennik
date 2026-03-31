@@ -12,6 +12,13 @@ interface Props {
 
 type Tab = "info" | "search";
 
+function fmtDate(d: string | null | undefined): string {
+  if (!d) return "";
+  const iso = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${parseInt(iso[3])}.${parseInt(iso[2])}.${iso[1]}`;
+  return d;
+}
+
 export default function PersonDetail({ person, allPersons }: Props) {
   const [tab, setTab] = useState<Tab>("info");
 
@@ -123,10 +130,10 @@ export default function PersonDetail({ person, allPersons }: Props) {
           {/* Life events */}
           <Section title="Daty i miejsca">
             {birth && (
-              <InfoRow label="Urodzenie" value={[birth.date_text, birth.place_text].filter(Boolean).join(", ")} />
+              <InfoRow label="Urodzenie" value={[fmtDate(birth.date_text), birth.place_text].filter(Boolean).join(", ")} />
             )}
             {death && (
-              <InfoRow label="Smierc" value={[death.date_text, death.place_text].filter(Boolean).join(", ")} />
+              <InfoRow label="Smierc" value={[fmtDate(death.date_text), death.place_text].filter(Boolean).join(", ")} />
             )}
             {person.events
               .filter((e) => e.event_type !== "birth" && e.event_type !== "death")

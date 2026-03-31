@@ -1,9 +1,22 @@
 import { Handle, Position, type NodeProps } from "reactflow";
 import type { TreeNodeData } from "../../types/tree";
 
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return "";
+  // If it's YYYY-MM-DD from date picker, format nicely
+  const iso = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) {
+    const [, y, m, d] = iso;
+    return `${parseInt(d)}.${parseInt(m)}.${y}`;
+  }
+  return dateStr;
+}
+
 export default function TreeNodeComponent({ data }: NodeProps<TreeNodeData>) {
   const name = [data.first_name, data.last_name].filter(Boolean).join(" ") || "???";
-  const dates = [data.birthday, data.deathday].filter(Boolean).join(" - ");
+  const birth = formatDate(data.birthday);
+  const death = formatDate(data.deathday);
+  const dates = [birth, death].filter(Boolean).join(" - ");
 
   const isUserEntered = data.origin === "user_entered";
   const isAutoDiscovered = data.origin === "auto_discovered";
@@ -33,7 +46,6 @@ export default function TreeNodeComponent({ data }: NodeProps<TreeNodeData>) {
     >
       <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
 
-      {/* Colored gender bar at top */}
       <div className={`h-1 ${genderBar}`} />
 
       <div className="px-3 py-2.5">
@@ -45,7 +57,6 @@ export default function TreeNodeComponent({ data }: NodeProps<TreeNodeData>) {
           <p className="text-[11px] text-gray-400 mt-0.5 truncate">{data.birth_place}</p>
         )}
 
-        {/* Origin badge */}
         {!isUserEntered && (
           <div className="mt-1.5">
             <span
