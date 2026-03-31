@@ -33,74 +33,115 @@ const NODE_WIDTH = 220;
 const NODE_HEIGHT = 90;
 
 function computeLayout(treeData: TreeNodeType[]) {
+  // Build a lookup for quick access
+  const nodeMap = new Map(treeData.map((n) => [n.id, n]));
+
+  // Collect spouse pairs (deduplicated)
+  const spousePairs: [string, string][] = [];
+  const spouseSeen = new Set<string>();
+  for (const node of treeData) {
+    for (const spouseId of node.rels.spouses) {
+      const key = [node.id, spouseId].sort().join("--");
+      if (!spouseSeen.has(key) && nodeMap.has(spouseId)) {
+        spousePairs.push([node.id, spouseId]);
+        spouseSeen.add(key);
+      }
+    }
+  }
+
+  // For dagre: merge each spouse pair into a single "family" node,
+  // then split them apart after layout. This guarantees same rank
+  // and proper child routing.
+  //
+  // Strategy: pick one person from each spouse pair as the "primary"
+  // (the one dagre positions), then offset the spouse next to them.
+  const spouseOf = new Map<string, string>(); // secondary -> primary
+  for (const [a, b] of spousePairs) {
+    // The one with more parent-child connections is primary
+    const aConns = (nodeMap.get(a)?.rels.children.length ?? 0) + (nodeMap.get(a)?.rels.parents.length ?? 0);
+    const bConns = (nodeMap.get(b)?.rels.children.length ?? 0) + (nodeMap.get(b)?.rels.parents.length ?? 0);
+    if (aConns >= bConns) {
+      spouseOf.set(b, a);
+    } else {
+      spouseOf.set(a, b);
+    }
+  }
+
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
   g.setGraph({
     rankdir: "TB",
     nodesep: 60,
-    ranksep: 100,
+    ranksep: 120,
     marginx: 40,
     marginy: 40,
   });
 
+  // Add all nodes - secondary spouses get double width to reserve space
   for (const node of treeData) {
-    g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    if (spouseOf.has(node.id)) {
+      // Secondary spouse: skip from dagre, will be placed manually
+      continue;
+    }
+    // If this node has a spouse, make it wider to reserve space for both
+    const hasSpouse = [...spouseOf.values()].includes(node.id);
+    const width = hasSpouse ? NODE_WIDTH * 2 + 40 : NODE_WIDTH;
+    g.setNode(node.id, { width, height: NODE_HEIGHT });
   }
 
-  // Add parent->child edges (these define the hierarchy)
+  // Add parent->child edges
+  // If a parent is a secondary spouse, redirect edge to their primary
   const edgeSet = new Set<string>();
   for (const node of treeData) {
     for (const parentId of node.rels.parents) {
-      const key = `${parentId}->${node.id}`;
+      const effectiveParent = spouseOf.get(parentId) ?? parentId;
+      const effectiveChild = spouseOf.has(node.id) ? undefined : node.id;
+      if (!effectiveChild) continue; // child is secondary spouse, skip
+      const key = `${effectiveParent}->${effectiveChild}`;
       if (!edgeSet.has(key)) {
-        g.setEdge(parentId, node.id, { minlen: 1 });
+        g.setEdge(effectiveParent, effectiveChild);
         edgeSet.add(key);
-      }
-    }
-  }
-
-  // Add spouse edges with minlen=0 so dagre puts them on the SAME rank
-  const spouseSet = new Set<string>();
-  for (const node of treeData) {
-    for (const spouseId of node.rels.spouses) {
-      const key = [node.id, spouseId].sort().join("--");
-      if (!spouseSet.has(key)) {
-        // Check both nodes exist
-        const hasSpouse = treeData.some((n) => n.id === spouseId);
-        if (hasSpouse) {
-          g.setEdge(node.id, spouseId, { minlen: 1, weight: 2 });
-          spouseSet.add(key);
-        }
       }
     }
   }
 
   dagre.layout(g);
 
-  // After dagre layout, force spouses to exact same Y position
-  const spouseYFix = new Map<string, number>();
+  // Build final positions
+  const positions = new Map<string, { x: number; y: number }>();
+
   for (const node of treeData) {
-    for (const spouseId of node.rels.spouses) {
-      const posA = g.node(node.id);
-      const posB = g.node(spouseId);
-      if (posA && posB) {
-        // Use the higher position (lower Y value) for both
-        const sharedY = Math.min(posA.y, posB.y);
-        spouseYFix.set(node.id, sharedY);
-        spouseYFix.set(spouseId, sharedY);
-      }
+    if (spouseOf.has(node.id)) continue; // handle below
+
+    const pos = g.node(node.id);
+    if (!pos) continue;
+
+    const hasSpouse = [...spouseOf.entries()].find(([_, primary]) => primary === node.id);
+    if (hasSpouse) {
+      // Primary spouse: shift left, put secondary to the right
+      const [secondaryId] = hasSpouse;
+      const gap = 20;
+      positions.set(node.id, {
+        x: pos.x - (NODE_WIDTH + gap) / 2,
+        y: pos.y,
+      });
+      positions.set(secondaryId, {
+        x: pos.x + (NODE_WIDTH + gap) / 2,
+        y: pos.y,
+      });
+    } else {
+      positions.set(node.id, { x: pos.x, y: pos.y });
     }
   }
 
   const nodes: Node[] = treeData.map((tn) => {
-    const pos = g.node(tn.id);
-    const y = spouseYFix.get(tn.id) ?? pos?.y ?? 0;
+    const p = positions.get(tn.id) ?? { x: 0, y: 0 };
     return {
       id: tn.id,
       type: "person",
       position: {
-        x: (pos?.x ?? 0) - NODE_WIDTH / 2,
-        y: y - NODE_HEIGHT / 2,
+        x: p.x - NODE_WIDTH / 2,
+        y: p.y - NODE_HEIGHT / 2,
       },
       data: tn.data,
       sourcePosition: Position.Bottom,
