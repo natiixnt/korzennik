@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -35,33 +35,72 @@ const NODE_HEIGHT = 90;
 function computeLayout(treeData: TreeNodeType[]) {
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: "TB", nodesep: 80, ranksep: 120, marginx: 40, marginy: 40 });
+  g.setGraph({
+    rankdir: "TB",
+    nodesep: 60,
+    ranksep: 100,
+    marginx: 40,
+    marginy: 40,
+  });
 
   for (const node of treeData) {
     g.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
   }
 
+  // Add parent->child edges (these define the hierarchy)
   const edgeSet = new Set<string>();
   for (const node of treeData) {
     for (const parentId of node.rels.parents) {
       const key = `${parentId}->${node.id}`;
       if (!edgeSet.has(key)) {
-        g.setEdge(parentId, node.id);
+        g.setEdge(parentId, node.id, { minlen: 1 });
         edgeSet.add(key);
+      }
+    }
+  }
+
+  // Add spouse edges with minlen=0 so dagre puts them on the SAME rank
+  const spouseSet = new Set<string>();
+  for (const node of treeData) {
+    for (const spouseId of node.rels.spouses) {
+      const key = [node.id, spouseId].sort().join("--");
+      if (!spouseSet.has(key)) {
+        // Check both nodes exist
+        const hasSpouse = treeData.some((n) => n.id === spouseId);
+        if (hasSpouse) {
+          g.setEdge(node.id, spouseId, { minlen: 1, weight: 2 });
+          spouseSet.add(key);
+        }
       }
     }
   }
 
   dagre.layout(g);
 
+  // After dagre layout, force spouses to exact same Y position
+  const spouseYFix = new Map<string, number>();
+  for (const node of treeData) {
+    for (const spouseId of node.rels.spouses) {
+      const posA = g.node(node.id);
+      const posB = g.node(spouseId);
+      if (posA && posB) {
+        // Use the higher position (lower Y value) for both
+        const sharedY = Math.min(posA.y, posB.y);
+        spouseYFix.set(node.id, sharedY);
+        spouseYFix.set(spouseId, sharedY);
+      }
+    }
+  }
+
   const nodes: Node[] = treeData.map((tn) => {
     const pos = g.node(tn.id);
+    const y = spouseYFix.get(tn.id) ?? pos?.y ?? 0;
     return {
       id: tn.id,
       type: "person",
       position: {
         x: (pos?.x ?? 0) - NODE_WIDTH / 2,
-        y: (pos?.y ?? 0) - NODE_HEIGHT / 2,
+        y: y - NODE_HEIGHT / 2,
       },
       data: tn.data,
       sourcePosition: Position.Bottom,
@@ -70,11 +109,12 @@ function computeLayout(treeData: TreeNodeType[]) {
     };
   });
 
+  // Build visual edges
   const edges: Edge[] = [];
   for (const node of treeData) {
     for (const parentId of node.rels.parents) {
       edges.push({
-        id: `${parentId}-${node.id}`,
+        id: `pc-${parentId}-${node.id}`,
         source: parentId,
         target: node.id,
         type: "smoothstep",
@@ -84,7 +124,7 @@ function computeLayout(treeData: TreeNodeType[]) {
     for (const spouseId of node.rels.spouses) {
       if (node.id < spouseId) {
         edges.push({
-          id: `spouse-${node.id}-${spouseId}`,
+          id: `sp-${node.id}-${spouseId}`,
           source: node.id,
           target: spouseId,
           type: "straight",
@@ -93,6 +133,8 @@ function computeLayout(treeData: TreeNodeType[]) {
             strokeWidth: 1.5,
             strokeDasharray: "6,4",
           },
+          // No arrow
+          markerEnd: undefined,
         });
       }
     }
@@ -112,20 +154,18 @@ function FamilyTreeInner({
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialLayout.edges);
   const { fitView } = useReactFlow();
 
-  // Sync when treeData changes (new person added etc.)
-  const prevDataRef = useMemo(() => ({ len: treeData.length }), [treeData]);
+  // Sync when treeData changes
   useMemo(() => {
     const layout = computeLayout(treeData);
     setNodes(layout.nodes);
     setEdges(layout.edges);
   }, [treeData, setNodes, setEdges]);
 
-  // Auto-layout: reset all positions to dagre layout
+  // Auto-layout: reset all positions
   const handleAutoLayout = useCallback(() => {
     const layout = computeLayout(treeData);
     setNodes(layout.nodes);
     setEdges(layout.edges);
-    // Slight delay to let React render new positions before fitting
     setTimeout(() => fitView({ padding: 0.3, duration: 300 }), 50);
   }, [treeData, setNodes, setEdges, fitView]);
 
@@ -177,7 +217,6 @@ function FamilyTreeInner({
       maxZoom={2.5}
       proOptions={{ hideAttribution: true }}
       nodesDraggable={true}
-      /* Touchpad: scroll = pan, pinch = zoom */
       panOnScroll={true}
       zoomOnScroll={false}
       panOnDrag={true}
@@ -192,7 +231,6 @@ function FamilyTreeInner({
         showInteractive={false}
         className="!shadow-md !border-gray-200 !rounded-lg"
       >
-        {/* Auto-layout button inside the controls panel */}
         <ControlButton onClick={handleAutoLayout} title="Wyrownaj uklad">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <rect x="1" y="1" width="5" height="5" rx="1" />
