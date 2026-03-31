@@ -43,7 +43,13 @@ export default function TreeNodeComponent({ data }: NodeProps<TreeNodeData>) {
     <div
       className={`rounded-xl border-2 shadow-md hover:shadow-lg transition-shadow w-[200px] h-[80px] overflow-hidden ${borderColor} ${bgColor}`}
     >
-      <Handle type="target" position={Position.Top} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
+      {/* Vertical handles: parent-child */}
+      <Handle type="target" position={Position.Top} id="top" className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
+      <Handle type="source" position={Position.Bottom} id="bottom" className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
+
+      {/* Side handles: spouse connections */}
+      <Handle type="source" position={Position.Right} id="right" className="!bg-transparent !w-0 !h-0 !border-0 !min-w-0 !min-h-0" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-transparent !w-0 !h-0 !border-0 !min-w-0 !min-h-0" />
 
       <div className={`h-1 ${genderBar}`} />
 
@@ -68,8 +74,6 @@ export default function TreeNodeComponent({ data }: NodeProps<TreeNodeData>) {
           </span>
         )}
       </div>
-
-      <Handle type="source" position={Position.Bottom} className="!bg-gray-400 !w-2 !h-2 !border-2 !border-white" />
     </div>
   );
 }

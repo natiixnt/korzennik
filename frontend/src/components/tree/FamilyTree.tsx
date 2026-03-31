@@ -5,19 +5,13 @@ import ReactFlow, {
   ControlButton,
   MiniMap,
   type Edge,
-  type EdgeProps,
   type Node,
   type NodeTypes,
-  type EdgeTypes,
   Position,
   ReactFlowProvider,
   useReactFlow,
   useNodesState,
   useEdgesState,
-  BaseEdge,
-  getSmoothStepPath,
-  getStraightPath,
-  EdgeLabelRenderer,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import dagre from "@dagrejs/dagre";
@@ -33,94 +27,13 @@ interface Props {
   onNodeClick?: (personId: string) => void;
   onNodeRightClick?: (personId: string, x: number, y: number) => void;
   onCanvasRightClick?: (x: number, y: number) => void;
-  onEdgeDelete?: (edgeId: string, sourceId: string, targetId: string, relType: string) => void;
+  onEdgeRightClick?: (sourceId: string, targetId: string, relType: string, x: number, y: number) => void;
 }
 
-const NODE_WIDTH = 204; // 200px + 4px border
-const NODE_HEIGHT = 84; // 80px + 4px border
+const NODE_WIDTH = 204;
+const NODE_HEIGHT = 84;
 
-// Custom edge with delete button on hover
-function DeletableEdge({
-  id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, style, data,
-}: EdgeProps) {
-  const [path, labelX, labelY] = getSmoothStepPath({
-    sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition,
-  });
-
-  return (
-    <>
-      <BaseEdge id={id} path={path} style={style} />
-      <EdgeLabelRenderer>
-        <div
-          style={{
-            position: "absolute",
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            pointerEvents: "all",
-          }}
-          className="group"
-        >
-          <button
-            className="w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:border-red-300 hover:text-red-500 transition-all shadow-sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              const handler = (data as any)?._onDelete;
-              if (handler) handler();
-            }}
-            title="Usun polaczenie"
-          >
-            x
-          </button>
-        </div>
-      </EdgeLabelRenderer>
-    </>
-  );
-}
-
-function DeletableSpouseEdge({
-  id, sourceX, sourceY, targetX, targetY, style, data,
-}: EdgeProps) {
-  const [path, labelX, labelY] = getStraightPath({
-    sourceX, sourceY, targetX, targetY,
-  });
-
-  return (
-    <>
-      <BaseEdge id={id} path={path} style={style} />
-      <EdgeLabelRenderer>
-        <div
-          style={{
-            position: "absolute",
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            pointerEvents: "all",
-          }}
-          className="group"
-        >
-          <button
-            className="w-5 h-5 rounded-full bg-white border border-gray-300 text-gray-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:border-red-300 hover:text-red-500 transition-all shadow-sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              const handler = (data as any)?._onDelete;
-              if (handler) handler();
-            }}
-            title="Usun polaczenie"
-          >
-            x
-          </button>
-        </div>
-      </EdgeLabelRenderer>
-    </>
-  );
-}
-
-const edgeTypes: EdgeTypes = {
-  deletableStep: DeletableEdge,
-  deletableSpouse: DeletableSpouseEdge,
-};
-
-function computeLayout(
-  treeData: TreeNodeType[],
-  onEdgeDelete?: (edgeId: string, sourceId: string, targetId: string, relType: string) => void,
-) {
+function computeLayout(treeData: TreeNodeType[]) {
   const nodeMap = new Map(treeData.map((n) => [n.id, n]));
 
   // Spouse pairs
@@ -191,6 +104,22 @@ function computeLayout(
     }
   }
 
+  // Determine which node is left/right in each spouse pair
+  const spouseLeftRight = new Map<string, "left" | "right">();
+  for (const [a, b] of spousePairs) {
+    const posA = positions.get(a);
+    const posB = positions.get(b);
+    if (posA && posB) {
+      if (posA.x <= posB.x) {
+        spouseLeftRight.set(a, "right"); // a is left node, connects via right
+        spouseLeftRight.set(b, "left");  // b is right node, connects via left
+      } else {
+        spouseLeftRight.set(a, "left");
+        spouseLeftRight.set(b, "right");
+      }
+    }
+  }
+
   const nodes: Node[] = treeData.map((tn) => {
     const p = positions.get(tn.id) ?? { x: 0, y: 0 };
     return {
@@ -206,35 +135,33 @@ function computeLayout(
 
   const edges: Edge[] = [];
   for (const node of treeData) {
+    // Parent-child: top->bottom
     for (const parentId of node.rels.parents) {
-      const edgeId = `pc-${parentId}-${node.id}`;
       edges.push({
-        id: edgeId,
+        id: `pc-${parentId}-${node.id}`,
         source: parentId,
+        sourceHandle: "bottom",
         target: node.id,
-        type: "deletableStep",
+        targetHandle: "top",
+        type: "smoothstep",
         style: { stroke: "#94a3b8", strokeWidth: 2 },
-        data: {
-          _onDelete: onEdgeDelete
-            ? () => onEdgeDelete(edgeId, parentId, node.id, "parent_child")
-            : undefined,
-        },
+        data: { relType: "parent_child" },
       });
     }
+    // Spouse: side->side (horizontal)
     for (const spouseId of node.rels.spouses) {
       if (node.id < spouseId) {
-        const edgeId = `sp-${node.id}-${spouseId}`;
+        const nodeDir = spouseLeftRight.get(node.id) ?? "right";
+        const spouseDir = spouseLeftRight.get(spouseId) ?? "left";
         edges.push({
-          id: edgeId,
+          id: `sp-${node.id}-${spouseId}`,
           source: node.id,
+          sourceHandle: nodeDir === "right" ? "right" : "left",
           target: spouseId,
-          type: "deletableSpouse",
+          targetHandle: spouseDir === "left" ? "left" : "right",
+          type: "straight",
           style: { stroke: "#e11d48", strokeWidth: 1.5, strokeDasharray: "6,4" },
-          data: {
-            _onDelete: onEdgeDelete
-              ? () => onEdgeDelete(edgeId, node.id, spouseId, "spouse")
-              : undefined,
-          },
+          data: { relType: "spouse" },
         });
       }
     }
@@ -248,25 +175,25 @@ function FamilyTreeInner({
   onNodeClick,
   onNodeRightClick,
   onCanvasRightClick,
-  onEdgeDelete,
+  onEdgeRightClick,
 }: Props) {
-  const initialLayout = useMemo(() => computeLayout(treeData, onEdgeDelete), [treeData, onEdgeDelete]);
+  const initialLayout = useMemo(() => computeLayout(treeData), [treeData]);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialLayout.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialLayout.edges);
   const { fitView } = useReactFlow();
 
   useMemo(() => {
-    const layout = computeLayout(treeData, onEdgeDelete);
+    const layout = computeLayout(treeData);
     setNodes(layout.nodes);
     setEdges(layout.edges);
-  }, [treeData, onEdgeDelete, setNodes, setEdges]);
+  }, [treeData, setNodes, setEdges]);
 
   const handleAutoLayout = useCallback(() => {
-    const layout = computeLayout(treeData, onEdgeDelete);
+    const layout = computeLayout(treeData);
     setNodes(layout.nodes);
     setEdges(layout.edges);
     setTimeout(() => fitView({ padding: 0.3, duration: 300 }), 50);
-  }, [treeData, onEdgeDelete, setNodes, setEdges, fitView]);
+  }, [treeData, setNodes, setEdges, fitView]);
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => { onNodeClick?.(node.id); },
@@ -280,6 +207,16 @@ function FamilyTreeInner({
       onNodeRightClick?.(node.id, event.clientX, event.clientY);
     },
     [onNodeRightClick]
+  );
+
+  const handleEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const relType = (edge.data as any)?.relType ?? "parent_child";
+      onEdgeRightClick?.(edge.source, edge.target, relType, event.clientX, event.clientY);
+    },
+    [onEdgeRightClick]
   );
 
   const handlePaneContextMenu = useCallback(
@@ -297,11 +234,11 @@ function FamilyTreeInner({
       nodes={nodes}
       edges={edges}
       nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
       onNodeClick={handleNodeClick}
       onNodeContextMenu={handleNodeContextMenu}
+      onEdgeContextMenu={handleEdgeContextMenu}
       onPaneContextMenu={handlePaneContextMenu}
       onPaneClick={handlePaneClick}
       fitView

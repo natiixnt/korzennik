@@ -134,40 +134,43 @@ export default function TreePage() {
     [persons, deletePerson]
   );
 
-  // Edge delete: find the relationship by person IDs and delete it
-  const handleEdgeDelete = useCallback(
-    async (_edgeId: string, sourceId: string, targetId: string, relType: string) => {
-      if (!allRels) return;
-
-      // Find matching relationship
-      const rel = allRels.find((r) => {
-        if (relType === "parent_child") {
-          return r.rel_type === "parent_child" && r.person1_id === sourceId && r.person2_id === targetId;
-        }
-        if (relType === "spouse") {
-          return (
-            r.rel_type === "spouse" &&
-            ((r.person1_id === sourceId && r.person2_id === targetId) ||
-             (r.person1_id === targetId && r.person2_id === sourceId))
-          );
-        }
-        return false;
-      });
-
-      if (!rel) return;
-
+  // Right-click on edge: show delete option
+  const handleEdgeRightClick = useCallback(
+    (sourceId: string, targetId: string, relType: string, x: number, y: number) => {
       const label = relType === "spouse" ? "malzenstwo" : "relacje rodzic-dziecko";
-      if (!confirm(`Usunac ${label}?`)) return;
-
-      try {
-        await deleteRelationship(rel.id);
-        qc.invalidateQueries({ queryKey: ["tree"] });
-        qc.invalidateQueries({ queryKey: ["all-relationships"] });
-        qc.invalidateQueries({ queryKey: ["persons"] });
-        qc.invalidateQueries({ queryKey: ["relationships"] });
-      } catch (e) {
-        console.error("Failed to delete relationship:", e);
-      }
+      setCtxMenu({
+        x,
+        y,
+        items: [
+          {
+            label: `Usun ${label}`,
+            danger: true,
+            onClick: async () => {
+              if (!allRels) return;
+              const rel = allRels.find((r) => {
+                if (relType === "parent_child") {
+                  return r.rel_type === "parent_child" && r.person1_id === sourceId && r.person2_id === targetId;
+                }
+                return (
+                  r.rel_type === "spouse" &&
+                  ((r.person1_id === sourceId && r.person2_id === targetId) ||
+                   (r.person1_id === targetId && r.person2_id === sourceId))
+                );
+              });
+              if (!rel) return;
+              try {
+                await deleteRelationship(rel.id);
+                qc.invalidateQueries({ queryKey: ["tree"] });
+                qc.invalidateQueries({ queryKey: ["all-relationships"] });
+                qc.invalidateQueries({ queryKey: ["persons"] });
+                qc.invalidateQueries({ queryKey: ["relationships"] });
+              } catch (e) {
+                console.error("Failed to delete relationship:", e);
+              }
+            },
+          },
+        ],
+      });
     },
     [allRels, qc]
   );
@@ -251,7 +254,7 @@ export default function TreePage() {
             onNodeClick={handleNodeClick}
             onNodeRightClick={handleNodeRightClick}
             onCanvasRightClick={handleCanvasRightClick}
-            onEdgeDelete={handleEdgeDelete}
+            onEdgeRightClick={handleEdgeRightClick}
           />
         )}
 
